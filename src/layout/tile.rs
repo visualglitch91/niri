@@ -46,6 +46,9 @@ pub struct Tile<W: LayoutElement> {
     /// The shadow around the window.
     shadow: Shadow,
 
+    /// The shadow around the window.
+    blur: BlurRenderElement,
+
     /// Whether this tile is fullscreen.
     ///
     /// This will update only when the `window` actually goes fullscreen, rather than right away,
@@ -180,6 +183,7 @@ impl<W: LayoutElement> Tile<W> {
             border: FocusRing::new(border_config.into()),
             focus_ring: FocusRing::new(focus_ring_config.into()),
             shadow: Shadow::new(shadow_config),
+            blur: BlurRenderElement::new(),
             is_fullscreen,
             fullscreen_backdrop: SolidColorBuffer::new(view_size, [0., 0., 0., 1.]),
             unfullscreen_to_floating: false,
@@ -395,6 +399,8 @@ impl<W: LayoutElement> Tile<W> {
             self.scale,
             1.,
         );
+
+        self.blur.update(self.animated_tile_size(), self.scale);
 
         let draw_focus_ring_with_background = if self.effective_border_width().is_some() {
             false
@@ -839,8 +845,6 @@ impl<W: LayoutElement> Tile<W> {
             self.window.rules().opacity.unwrap_or(1.).clamp(0., 1.)
         };
 
-        let blur_config = self.window.rules().blur.resolve_against(self.options.blur);
-
         // This is here rather than in render_offset() because render_offset() is currently assumed
         // by the code to be temporary. So, for example, interactive move will try to "grab" the
         // tile at its current render offset and reset the render offset to zero by cancelling the
@@ -1054,31 +1058,19 @@ impl<W: LayoutElement> Tile<W> {
         let elem = focus_ring.then(|| self.focus_ring.render(renderer, location).map(Into::into));
         let rv = rv.chain(elem.into_iter().flatten());
 
-        let blur_element = (blur_config.on && output.is_some())
-            .then(|| {
-                let optimized = !self.window.is_floating();
+        let blur_config = self.window.rules().blur.resolve_against(self.options.blur);
 
-                Some(
-                    BlurRenderElement::new(
-                        renderer,
-                        output.unwrap(),
-                        area.to_i32_round(),
-                        window_render_loc.to_physical(self.scale).to_i32_round(),
-                        radius.top_left,
-                        optimized,
-                        self.scale,
-                        blur_config,
-                    )
-                    .into(),
-                )
-            })
-            .flatten()
-            .into_iter();
+        let blur_elem = self.blur.clone().with_deps(
+            renderer,
+            location,
+            blur_config.noise.0 as f32,
+            output.unwrap().clone(),
+        );
 
         let rv = rv.chain(self.shadow.render(renderer, location).map(Into::into));
 
         // Render the blur element
-        rv.chain(blur_element)
+        rv.chain(Some(blur_elem.into()))
     }
 
     pub fn render<'a, R: NiriRenderer + 'a>(

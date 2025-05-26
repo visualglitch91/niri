@@ -1,7 +1,6 @@
 // Ported from https://github.com/nferhat/fht-compositor/blob/main/src/renderer/blur/mod.rs
 
 pub mod element;
-pub mod optimized_blur_texture_element;
 pub(super) mod shader;
 
 use anyhow::Context;
